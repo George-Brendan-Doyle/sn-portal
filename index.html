@@ -1,2 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SN Portal — Network Status</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0d0f14;
+    --surface:   #151820;
+    --surface2:  #1c2030;
+    --border:    rgba(255,255,255,0.07);
+    --border2:   rgba(255,255,255,0.12);
+    --text:      #e8eaf0;
+    --muted:     #6b7280;
+    --accent:    #4f8ef7;
+    --green:     #22c55e;
+    --amber:     #f59e0b;
+    --red:       #ef4444;
+    --purple:    #a78bfa;
+  }
 
+  * { box-sizing: border-box; margin: 0; padding: 0; }
 
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+
+  .logo span {
+    color: var(--accent);
+  }
+
+  .header-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+  }
+
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  /* Gate */
+  #gate {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    gap: 24px;
+  }
+
+  .gate-box {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 16px;
+    padding: 40px;
+    width: 100%;
+    max-width: 400px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .gate-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 600;
+    text-align: center;
+  }
+
+  .gate-sub {
+    font-size: 13px;
+    color: var(--muted);
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  .field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .field-group label {
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .field-group input {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: 'DM Mono', monospace;
+    outline: none;
+    transition: border-color 0.2s;
+    width: 100%;
+  }
+
+  .field-group input:focus {
+    border-color: var(--accent);
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    width: 100%;
+    font-family: 'Inter', sans-serif;
+    transition: opacity 0.2s;
+  }
+
+  .btn-primary:hover { opacity: 0.85; }
+
+  .error-msg {
+    font-size: 13px;
+    color: var(--red);
+    text-align: center;
+    display: none;
+  }
+
+  /* Dashboard */
+  #dashboard { display: none; }
+
+  .dash-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 32px;
+  }
+
+  .dash-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 26px;
+    font-weight: 700;
+  }
+
+  .refresh-btn {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 8px 16px;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: color 0.2s, border-color 0.2s;
+  }
+
+  .refresh-btn:hover { color: var(--text); border-color: var(--accent); }
+
+  /* Stats row */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-size: 28px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .stat-value.green { color: var(--green); }
+  .stat-value.amber { color: var(--amber); }
+  .stat-value.red   { color: var(--red); }
+
+  /* Section */
+  .section-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* Device cards */
+  .devices-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 32px;
+  }
+
+  .device-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .device-card.blocked {
+    border-color: rgba(239,68,68,0.3);
+    background: rgba(239,68,68,0.05);
+  }
+
+  .status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .status-dot.online  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.recent  { background: var(--amber); }
+  .status-dot.offline { background: var(--muted); }
+  .status-dot.blocked { background: var(--red); }
+
+  .device-info { flex: 1; min-width: 0; }
+
+  .device-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .device-meta {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+
+  .device-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.05em;
+  }
+
+  .badge-role    { background: rgba(167,139,250,0.15); color: var(--purple); }
+  .badge-auth    { background: rgba(79,142,247,0.15);  color: var(--accent); }
+  .badge-member  { background: rgba(34,197,94,0.12);   color: var(--green); }
+  .badge-single  { background: rgba(107,114,128,0.2);  color: var(--muted); }
+  .badge-blocked { background: rgba(239,68,68,0.15);   color: var(--red); }
+  .badge-pkg     { background: rgba(245,158,11,0.15);  color: var(--amber); }
+
+  /* Status banner */
+  .status-banner {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 32px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .status-banner .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    flex-shrink: 0;
+  }
+
+  .banner-text { font-size: 13px; color: var(--muted); }
+  .banner-text strong { color: var(--text); font-weight: 500; }
+
+  .loading {
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+    padding: 40px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid var(--border2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  footer {
+    text-align: center;
+    padding: 32px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+  }
+
+  footer a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">SN<span>Portal</span></div>
+  <div class="header-meta" id="header-time">—</div>
+</header>
+
+<main>
+
+  <!-- Password Gate -->
+  <div id="gate">
+    <div class="gate-box">
+      <div class="gate-title">Network Access</div>
+      <div class="gate-sub">Enter your authoritative password to access the network status dashboard.</div>
+      <div class="field-group">
+        <label>Network</label>
+        <input type="text" id="input-network" placeholder="e.g. sn-relay" value="sn-relay">
+      </div>
+      <div class="field-group">
+        <label>Member Token</label>
+        <input type="password" id="input-token" placeholder="GitHub member token">
+      </div>
+      <div class="field-group">
+        <label>Password</label>
+        <input type="password" id="input-password" placeholder="Authoritative password">
+      </div>
+      <div class="error-msg" id="error-msg">Incorrect password or invalid token.</div>
+      <button class="btn-primary" onclick="attemptLogin()">Access Dashboard</button>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard">
+    <div class="dash-header">
+      <div class="dash-title">Network Status</div>
+      <button class="refresh-btn" onclick="loadDashboard()">
+        <span>↻</span> Refresh
+      </button>
+    </div>
+
+    <!-- Status banner -->
+    <div class="status-banner" id="status-banner" style="display:none">
+      <div class="dot"></div>
+      <div class="banner-text" id="banner-text"></div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Total Devices</div>
+        <div class="stat-value" id="stat-total">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Online (24h)</div>
+        <div class="stat-value green" id="stat-online">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Blocked</div>
+        <div class="stat-value red" id="stat-blocked">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Last Update</div>
+        <div class="stat-value" id="stat-updated" style="font-size:14px;padding-top:6px">—</div>
+      </div>
+    </div>
+
+    <!-- Devices -->
+    <div class="section-title">Device Heartbeats</div>
+    <div class="devices-grid" id="devices-grid">
+      <div class="loading"><span class="spinner"></span>Loading devices…</div>
+    </div>
+
+    <!-- Messages -->
+    <div class="section-title">Recent Messages</div>
+    <div class="devices-grid" id="messages-grid">
+      <div class="loading"><span class="spinner"></span>Loading messages…</div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  SimpleNotesNew &nbsp;·&nbsp; <a href="https://sites.google.com/view/simplenotesnew/home" target="_blank">App Website</a> &nbsp;·&nbsp; <a href="https://sites.google.com/view/simplenotesnew/history" target="_blank">Version History</a>
+</footer>
+
+<script>
+  const OWNER = 'George-Brendan-Doyle';
+  let REPO = 'sn-relay';
+  let TOKEN = '';
+  let PASS_HASH = '';
+
+  function updateClock() {
+    document.getElementById('header-time').textContent = new Date().toUTCString().replace(' GMT','') + ' UTC';
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  async function sha256(str) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  }
+
+  async function attemptLogin() {
+    const network  = document.getElementById('input-network').value.trim();
+    const token    = document.getElementById('input-token').value.trim();
+    const password = document.getElementById('input-password').value.trim();
+    const errEl    = document.getElementById('error-msg');
+    errEl.style.display = 'none';
+
+    if (!token || !password || !network) {
+      errEl.textContent = 'All fields are required.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    REPO  = network;
+    TOKEN = token;
+
+    // Verify token works by fetching status.json
+    try {
+      const res = await ghGet('status.json');
+      if (!res) throw new Error('fetch failed');
+
+      // Verify password against stored hash in status.json (future)
+      // For now: if token works, grant access — password stored locally for future server-side check
+      PASS_HASH = await sha256(password);
+
+      document.getElementById('gate').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'block';
+      loadDashboard(res);
+    } catch(e) {
+      errEl.textContent = 'Could not connect. Check token and network name.';
+      errEl.style.display = 'block';
+    }
+  }
+
+  async function ghGet(path) {
+    const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}`;
+    const res = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${TOKEN}`,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28'
+      }
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (Array.isArray(data)) return data; // directory listing
+    const decoded = atob(data.content.replace(/\n/g,''));
+    return JSON.parse(decoded);
+  }
+
+  async function ghList(path) {
+    const url = `https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}`;
+    const res = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${TOKEN}`,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28'
+      }
+    });
+    if (res.status === 404) return [];
+    if (!res.ok) return [];
+    return await res.json();
+  }
+
+  function timeAgo(isoStr) {
+    if (!isoStr) return 'never';
+    const diff = (Date.now() - new Date(isoStr)) / 1000;
+    if (diff < 60)   return 'just now';
+    if (diff < 3600) return `${Math.round(diff/60)}m ago`;
+    if (diff < 86400) return `${Math.round(diff/3600)}h ago`;
+    return `${Math.round(diff/86400)}d ago`;
+  }
+
+  function isOnline(isoStr) {
+    if (!isoStr) return false;
+    return (Date.now() - new Date(isoStr)) < 86400000;
+  }
+
+  function roleBadge(role) {
+    const map = { authoritative: 'badge-auth', member: 'badge-member', singleUser: 'badge-single' };
+    const labels = { authoritative: 'Authoritative', member: 'Member', singleUser: 'Single User' };
+    const cls = map[role] || 'badge-single';
+    return `<span class="badge ${cls}">${labels[role] || role}</span>`;
+  }
+
+  async function loadDashboard(statusData) {
+    // Load status
+    const status = statusData || await ghGet('status.json');
+    if (status) {
+      document.getElementById('stat-blocked').textContent = status.blockedDevices?.length ?? 0;
+      document.getElementById('stat-updated').textContent = timeAgo(status.timestamp);
+
+      const banner = document.getElementById('status-banner');
+      const bannerText = document.getElementById('banner-text');
+      banner.style.display = 'flex';
+      bannerText.innerHTML = `Authoritative device: <strong>${status.authoritativeDevice}</strong> &nbsp;·&nbsp; Last push: <strong>${timeAgo(status.timestamp)}</strong>${status.packageAvailable ? ' &nbsp;·&nbsp; <span style="color:var(--amber)">Package available</span>' : ''}`;
+    }
+
+    // Load heartbeats
+    const hbFiles = await ghList('heartbeat');
+    const beats = [];
+    for (const f of hbFiles) {
+      if (!f.name.endsWith('.json')) continue;
+      try {
+        const beat = await ghGet(`heartbeat/${f.name}`);
+        if (beat) beats.push(beat);
+      } catch(e) {}
+    }
+
+    document.getElementById('stat-total').textContent = beats.length;
+    document.getElementById('stat-online').textContent = beats.filter(b => isOnline(b.timestamp)).length;
+
+    const grid = document.getElementById('devices-grid');
+    if (beats.length === 0) {
+      grid.innerHTML = '<div class="loading">No heartbeats found</div>';
+    } else {
+      const blocked = status?.blockedDevices || [];
+      beats.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+      grid.innerHTML = beats.map(b => {
+        const online  = isOnline(b.timestamp);
+        const isBlocked = blocked.includes(b.device);
+        const dotCls = isBlocked ? 'blocked' : online ? 'online' : 'offline';
+        return `
+          <div class="device-card ${isBlocked ? 'blocked' : ''}">
+            <div class="status-dot ${dotCls}"></div>
+            <div class="device-info">
+              <div class="device-name">${b.device}</div>
+              <div class="device-meta">v${b.appVersion} &nbsp;·&nbsp; last seen ${timeAgo(b.timestamp)}</div>
+            </div>
+            <div class="device-badges">
+              ${roleBadge(b.networkRole)}
+              ${isBlocked ? '<span class="badge badge-blocked">Blocked</span>' : ''}
+              ${b.requestPackage ? '<span class="badge badge-pkg">Wants package</span>' : ''}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    // Load recent messages
+    const msgFiles = await ghList('messages');
+    const msgs = [];
+    for (const f of msgFiles.slice(-10)) {
+      if (!f.name.endsWith('.json')) continue;
+      try {
+        const msg = await ghGet(`messages/${f.name}`);
+        if (msg) msgs.push(msg);
+      } catch(e) {}
+    }
+
+    const msgGrid = document.getElementById('messages-grid');
+    if (msgs.length === 0) {
+      msgGrid.innerHTML = '<div class="loading">No messages found</div>';
+    } else {
+      msgs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+      msgGrid.innerHTML = msgs.slice(0,10).map(m => {
+        const typeColor = m.type === 'command' ? 'var(--amber)' : m.type === 'alert' ? 'var(--red)' : 'var(--accent)';
+        return `
+          <div class="device-card">
+            <div class="device-info">
+              <div class="device-name" style="font-size:13px">${m.subject}</div>
+              <div class="device-meta">${m.fromDevice} → ${m.toDevice} &nbsp;·&nbsp; ${timeAgo(m.timestamp)}</div>
+              <div class="device-meta" style="margin-top:4px;color:var(--text)">${m.body}</div>
+            </div>
+            <div class="device-badges">
+              <span class="badge" style="background:rgba(79,142,247,0.1);color:${typeColor}">${(m.type||'message').toUpperCase()}</span>
+              ${m.read ? '' : '<span class="badge badge-pkg">Unread</span>'}
+            </div>
+          </div>`;
+      }).join('');
+    }
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && document.getElementById('gate').style.display !== 'none') {
+      attemptLogin();
+    }
+  });
+</script>
+</body>
+</html>
