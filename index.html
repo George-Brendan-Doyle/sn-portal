@@ -486,10 +486,15 @@
       const res = await ghGet('status.json');
       if (!res) throw new Error('fetch failed');
 
-      // Verify password against stored hash in status.json (future)
-      // For now: if token works, grant access — password stored locally for future server-side check
-      PASS_HASH = await sha256(password);
+      // Verify password against hash stored in status.json
+      const enteredHash = await sha256(password);
+      if (res.portalPasswordHash && res.portalPasswordHash !== enteredHash) {
+        errEl.textContent = 'Incorrect password.';
+        errEl.style.display = 'block';
+        return;
+      }
 
+      PASS_HASH = enteredHash;
       document.getElementById('gate').style.display = 'none';
       document.getElementById('dashboard').style.display = 'block';
       loadDashboard(res);
@@ -575,28 +580,52 @@
       } catch(e) {}
     }
 
-    document.getElementById('stat-total').textContent = beats.length;
-    document.getElementById('stat-online').textContent = beats.filter(b => isOnline(b.timestamp)).length;
+    const blocked = status?.blockedDevices || [];
+    const known   = status?.knownDevices || [];
+
+    // Merge known devices with heartbeat data
+    const beatMap = {};
+    beats.forEach(b => { beatMap[b.device] = b; });
+
+    // Add known devices that have no heartbeat
+    known.forEach(d => {
+      if (!beatMap[d.name]) {
+        beatMap[d.name] = { device: d.name, timestamp: null, appVersion: '—', networkRole: 'unknown', requestPackage: false, _registryOnly: true, _allowed: d.isAllowed };
+      }
+    });
+
+    const allDevices = Object.values(beatMap);
+    allDevices.sort((a,b) => {
+      if (!a.timestamp && !b.timestamp) return 0;
+      if (!a.timestamp) return 1;
+      if (!b.timestamp) return -1;
+      return new Date(b.timestamp) - new Date(a.timestamp);
+    });
+
+    document.getElementById('stat-total').textContent = allDevices.length;
+    document.getElementById('stat-online').textContent = allDevices.filter(b => isOnline(b.timestamp)).length;
+    document.getElementById('stat-blocked').textContent = blocked.length;
 
     const grid = document.getElementById('devices-grid');
-    if (beats.length === 0) {
-      grid.innerHTML = '<div class="loading">No heartbeats found</div>';
+    if (allDevices.length === 0) {
+      grid.innerHTML = '<div class="loading">No devices found</div>';
     } else {
-      const blocked = status?.blockedDevices || [];
-      beats.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-      grid.innerHTML = beats.map(b => {
-        const online  = isOnline(b.timestamp);
+      grid.innerHTML = allDevices.map(b => {
+        const online    = isOnline(b.timestamp);
         const isBlocked = blocked.includes(b.device);
-        const dotCls = isBlocked ? 'blocked' : online ? 'online' : 'offline';
+        const neverSeen = !b.timestamp;
+        const dotCls    = isBlocked ? 'blocked' : neverSeen ? 'offline' : online ? 'online' : 'recent';
+        const lastSeen  = neverSeen ? 'never seen' : `last seen ${timeAgo(b.timestamp)}`;
         return `
           <div class="device-card ${isBlocked ? 'blocked' : ''}">
             <div class="status-dot ${dotCls}"></div>
             <div class="device-info">
               <div class="device-name">${b.device}</div>
-              <div class="device-meta">v${b.appVersion} &nbsp;·&nbsp; last seen ${timeAgo(b.timestamp)}</div>
+              <div class="device-meta">${b.appVersion !== '—' ? 'v' + b.appVersion + ' &nbsp;·&nbsp; ' : ''}${lastSeen}</div>
             </div>
             <div class="device-badges">
-              ${roleBadge(b.networkRole)}
+              ${b.networkRole && b.networkRole !== 'unknown' ? roleBadge(b.networkRole) : ''}
+              ${neverSeen ? '<span class="badge" style="background:rgba(107,114,128,0.2);color:var(--muted)">Never seen</span>' : ''}
               ${isBlocked ? '<span class="badge badge-blocked">Blocked</span>' : ''}
               ${b.requestPackage ? '<span class="badge badge-pkg">Wants package</span>' : ''}
             </div>
