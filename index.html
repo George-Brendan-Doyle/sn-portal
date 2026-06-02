@@ -397,7 +397,7 @@
   <!-- Dashboard -->
   <div id="dashboard">
     <div class="dash-header">
-      <div class="dash-title">Current Network Status</div>
+      <div class="dash-title">New Network Status</div>
       <button class="refresh-btn" onclick="loadDashboard()">
         <span>↻</span> Refresh
       </button>
@@ -453,6 +453,7 @@
   let REPO = 'sn-relay';
   let TOKEN = '';
   let PASS_HASH = '';
+  let PASS_PLAIN = ''; // kept in memory for message decryption — never stored
 
   function updateClock() {
     document.getElementById('header-time').textContent = new Date().toUTCString().replace(' GMT','') + ' UTC';
@@ -476,6 +477,40 @@
   async function sha256(str) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  }
+
+  // AES-256-GCM decrypt matching iOS CryptoHelper (HKDF-SHA256)
+  async function deriveKey(password, saltB64) {
+    const pwBytes   = new TextEncoder().encode(password);
+    const saltBytes = Uint8Array.from(atob(saltB64), c => c.charCodeAt(0));
+    const info      = new TextEncoder().encode('SimpleNotesRelay');
+    const baseKey   = await crypto.subtle.importKey('raw', pwBytes, 'HKDF', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name: 'HKDF', salt: saltBytes, info: info, hash: 'SHA-256' },
+      baseKey,
+      { name: 'AES-GCM', length: 256 },
+      false, ['decrypt']
+    );
+  }
+
+  async function decryptPayload(jsonStr, password) {
+    try {
+      const payload = JSON.parse(jsonStr);
+      if (!payload.encrypted) return jsonStr; // plain text
+      const key      = await deriveKey(password, payload.salt);
+      const iv       = Uint8Array.from(atob(payload.iv),         c => c.charCodeAt(0));
+      const cipher   = Uint8Array.from(atob(payload.ciphertext), c => c.charCodeAt(0));
+      const combined = new Uint8Array([...iv, ...cipher]);
+      // AES-GCM: iv is first 12 bytes, rest is ciphertext+tag
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: combined.slice(0, 12) },
+        key,
+        combined.slice(12)
+      );
+      return new TextDecoder().decode(decrypted);
+    } catch(e) {
+      return null; // decryption failed — wrong password or plain text
+    }
   }
 
   async function attemptLogin() {
@@ -508,6 +543,7 @@
       }
 
       PASS_HASH = enteredHash;
+      PASS_PLAIN = password;
       sessionStorage.setItem('sn_token', TOKEN);
       sessionStorage.setItem('sn_repo', REPO);
       sessionStorage.setItem('sn_hash', PASS_HASH);
@@ -628,12 +664,37 @@
     if (allDevices.length === 0) {
       grid.innerHTML = '<div class="loading">No devices found</div>';
     } else {
+      // Collect pending registry changes from heartbeats
+      const pendingChanges = [];
+      beats.forEach(b => {
+        if (b.registryChanges && b.registryChanges.length > 0) {
+          b.registryChanges.forEach(c => pendingChanges.push({...c, reportedBy: b.device}));
+        }
+      });
+
+      // Show pending changes banner
+      const existingBanner = document.getElementById('pending-banner');
+      if (existingBanner) existingBanner.remove();
+      if (pendingChanges.length > 0) {
+        const summary = document.createElement('div');
+        summary.id = 'pending-banner';
+        summary.className = 'status-banner';
+        summary.style.borderColor = 'rgba(245,158,11,0.3)';
+        summary.style.marginBottom = '12px';
+        summary.innerHTML = `<div class="dot" style="background:var(--amber);box-shadow:0 0 6px var(--amber)"></div><div class="banner-text"><strong>${pendingChanges.length} pending registry change(s)</strong> — will merge when Authoritative device next launches</div>`;
+        grid.parentNode.insertBefore(summary, grid);
+      }
+
       grid.innerHTML = allDevices.map(b => {
         const online    = isOnline(b.timestamp);
         const isBlocked = blocked.includes(b.device);
         const neverSeen = !b.timestamp;
         const dotCls    = isBlocked ? 'blocked' : neverSeen ? 'offline' : online ? 'online' : 'recent';
         const lastSeen  = neverSeen ? 'never seen' : `last seen ${timeAgo(b.timestamp)}`;
+        const pending   = pendingChanges.filter(c => c.deviceName === b.device);
+        const pendingHTML = pending.map(c =>
+          `<span class="badge" style="background:rgba(245,158,11,0.15);color:var(--amber)" title="Changed by ${c.changedBy}">${c.isAllowed ? '✓ Unblock pending' : '⊘ Block pending'}</span>`
+        ).join('');
         return `
           <div class="device-card ${isBlocked ? 'blocked' : ''}">
             <div class="status-dot ${dotCls}"></div>
@@ -646,6 +707,7 @@
               ${neverSeen ? '<span class="badge" style="background:rgba(107,114,128,0.2);color:var(--muted)">Never seen</span>' : ''}
               ${isBlocked ? '<span class="badge badge-blocked">Blocked</span>' : ''}
               ${b.requestPackage ? '<span class="badge badge-pkg">Wants package</span>' : ''}
+              ${pendingHTML}
             </div>
           </div>`;
       }).join('');
@@ -667,7 +729,18 @@
       msgGrid.innerHTML = '<div class="loading">No messages found</div>';
     } else {
       msgs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-      msgGrid.innerHTML = msgs.slice(0,10).map(m => {
+      // Attempt to decrypt messages using the portal password
+      const decryptedMsgs = await Promise.all(msgs.slice(0,10).map(async m => {
+        const decSubject = await decryptPayload(m.subject, PASS_PLAIN);
+        const decBody    = await decryptPayload(m.body,    PASS_PLAIN);
+        return {
+          ...m,
+          subject:   decSubject || m.subject,
+          body:      decBody    || m.body,
+          encrypted: decSubject !== null && decSubject !== m.subject
+        };
+      }));
+      msgGrid.innerHTML = decryptedMsgs.map(m => {
         const typeColor = m.type === 'command' ? 'var(--amber)' : m.type === 'alert' ? 'var(--red)' : 'var(--accent)';
         return `
           <div class="device-card">
@@ -678,6 +751,7 @@
             </div>
             <div class="device-badges">
               <span class="badge" style="background:rgba(79,142,247,0.1);color:${typeColor}">${(m.type||'message').toUpperCase()}</span>
+              ${m.encrypted ? '<span class="badge" style="background:rgba(34,197,94,0.12);color:var(--green)">🔒 Encrypted</span>' : ''}
               ${m.read ? '' : '<span class="badge badge-pkg">Unread</span>'}
             </div>
           </div>`;
