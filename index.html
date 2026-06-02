@@ -460,6 +460,19 @@
   updateClock();
   setInterval(updateClock, 1000);
 
+  // Restore session if available
+  (function() {
+    const t = sessionStorage.getItem('sn_token');
+    const r = sessionStorage.getItem('sn_repo');
+    const h = sessionStorage.getItem('sn_hash');
+    if (t && r) {
+      TOKEN = t; REPO = r; PASS_HASH = h || '';
+      document.getElementById('gate').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'block';
+      loadDashboard();
+    }
+  })();
+
   async function sha256(str) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
@@ -495,6 +508,9 @@
       }
 
       PASS_HASH = enteredHash;
+      sessionStorage.setItem('sn_token', TOKEN);
+      sessionStorage.setItem('sn_repo', REPO);
+      sessionStorage.setItem('sn_hash', PASS_HASH);
       document.getElementById('gate').style.display = 'none';
       document.getElementById('dashboard').style.display = 'block';
       loadDashboard(res);
@@ -560,7 +576,7 @@
 
   async function loadDashboard(statusData) {
     // Load status
-    const status = statusData || await ghGet('status.json');
+    const status = statusData ? statusData : await ghGet('status.json');
     if (status) {
       document.getElementById('stat-blocked').textContent = status.blockedDevices?.length ?? 0;
       document.getElementById('stat-updated').textContent = timeAgo(status.timestamp);
