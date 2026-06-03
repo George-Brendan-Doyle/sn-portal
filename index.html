@@ -760,9 +760,11 @@
     } else {
       msgs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
       // Attempt to decrypt messages using the portal password
+      // iOS encrypts using the SHA-256 hash of the password (retrieveHash()), not the plain text.
+      // PASS_HASH is that hash — must match what CryptoHelper used as the HKDF input key.
       const decryptedMsgs = await Promise.all(msgs.slice(0,10).map(async m => {
-        const decSubject = await decryptPayload(m.subject, PASS_PLAIN);
-        const decBody    = await decryptPayload(m.body,    PASS_PLAIN);
+        const decSubject = await decryptPayload(m.subject, PASS_HASH);
+        const decBody    = await decryptPayload(m.body,    PASS_HASH);
         return {
           ...m,
           subject:   decSubject || m.subject,
