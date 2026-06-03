@@ -426,9 +426,14 @@
   <div id="dashboard">
     <div class="dash-header">
       <div class="dash-title">Network Status</div>
-      <button class="refresh-btn" onclick="loadDashboard()">
-        <span>↻</span> Refresh
-      </button>
+      <div style="display:flex;gap:8px">
+        <button class="refresh-btn" onclick="loadDashboard()">
+          <span>↻</span> Refresh
+        </button>
+        <button class="refresh-btn" onclick="logout()" style="color:var(--red);border-color:rgba(239,68,68,0.3)">
+          <span>⏻</span> Logout
+        </button>
+      </div>
     </div>
 
     <!-- Status banner -->
@@ -802,6 +807,15 @@
         }
       });
     }
+  }
+
+  function logout() {
+    sessionStorage.clear();
+    TOKEN = ''; REPO = ''; PASS_HASH = ''; PASS_PLAIN = '';
+    document.getElementById('dashboard').style.display = 'none';
+    document.getElementById('gate').style.display = 'flex';
+    document.getElementById('input-password').value = '';
+    document.getElementById('input-token').value = '';
   }
 
   function toggleBody(bodyId, toggleId) {
