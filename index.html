@@ -351,6 +351,28 @@
 
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* Message filter pills */
+  .msg-filter-bar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .filter-pill {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.04em;
+  }
+  .filter-pill:hover { color: var(--text); border-color: var(--accent); }
+  .filter-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
   /* Message body */
   .msg-body {
     white-space: pre-wrap;
@@ -469,7 +491,14 @@
     </div>
 
     <!-- Messages -->
-    <div class="section-title">Recent Messages</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="section-title" style="margin-bottom:0">Recent Messages</div>
+      <div class="msg-filter-bar" style="margin-bottom:0">
+        <button class="filter-pill active" id="pill-all"    onclick="setMsgFilter('all')">All</button>
+        <button class="filter-pill"        id="pill-unread" onclick="setMsgFilter('unread')">Unread</button>
+        <button class="filter-pill"        id="pill-read"   onclick="setMsgFilter('read')">Read</button>
+      </div>
+    </div>
     <div class="devices-grid" id="messages-grid">
       <div class="loading"><span class="spinner"></span>Loading messages…</div>
     </div>
@@ -487,6 +516,7 @@
   let TOKEN = '';
   let PASS_HASH = '';
   let PASS_PLAIN = ''; // kept in memory for message decryption — never stored
+  let MSG_FILTER = 'all'; // 'all' | 'unread' | 'read'
 
   function updateClock() {
     document.getElementById('header-time').textContent = new Date().toUTCString().replace(' GMT','') + ' UTC';
@@ -767,7 +797,7 @@
       // Attempt to decrypt messages using the portal password
       // iOS encrypts using the SHA-256 hash of the password (retrieveHash()), not the plain text.
       // PASS_HASH is that hash — must match what CryptoHelper used as the HKDF input key.
-      const decryptedMsgs = await Promise.all(msgs.slice(0,10).map(async m => {
+      window._allDecryptedMsgs = await Promise.all(msgs.slice(0,20).map(async m => {
         const decSubject = await decryptPayload(m.subject, PASS_HASH);
         const decBody    = await decryptPayload(m.body,    PASS_HASH);
         return {
@@ -777,6 +807,35 @@
           encrypted: decSubject !== null && decSubject !== m.subject
         };
       }));
+      renderMessages();
+    }
+  }
+
+  // MARK: - Message filter
+
+  function setMsgFilter(filter) {
+    MSG_FILTER = filter;
+    ['all','unread','read'].forEach(f => {
+      document.getElementById('pill-' + f)?.classList.toggle('active', f === filter);
+    });
+    renderMessages();
+  }
+
+  function renderMessages() {
+    const msgGrid = document.getElementById('messages-grid');
+    if (!msgGrid) return;
+    const all = window._allDecryptedMsgs || [];
+    const filtered = MSG_FILTER === 'unread' ? all.filter(m => !m.read)
+                   : MSG_FILTER === 'read'   ? all.filter(m =>  m.read)
+                   : all;
+    if (filtered.length === 0) {
+      const label = MSG_FILTER === 'unread' ? 'No unread messages'
+                  : MSG_FILTER === 'read'   ? 'No read messages'
+                  : 'No messages found';
+      msgGrid.innerHTML = `<div class="loading">${label}</div>`;
+      return;
+    }
+    const decryptedMsgs = filtered;
       msgGrid.innerHTML = decryptedMsgs.map((m, idx) => {
         const typeColor = m.type === 'command' ? 'var(--amber)' : m.type === 'alert' ? 'var(--red)' : 'var(--accent)';
         const bodyId    = `msg-body-${idx}`;
@@ -808,7 +867,6 @@
           toggleEl.style.display = 'block';
         }
       });
-    }
   }
 
   function logout() {
