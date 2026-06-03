@@ -628,8 +628,7 @@
       headers: {
         'Authorization': `Bearer ${TOKEN}`,
         'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'Cache-Control': 'no-cache'
+        'X-GitHub-Api-Version': '2022-11-28'
       }
     });
     if (res.status === 404) return null;
@@ -649,8 +648,7 @@
       headers: {
         'Authorization': `Bearer ${TOKEN}`,
         'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        'Cache-Control': 'no-cache'
+        'X-GitHub-Api-Version': '2022-11-28'
       }
     });
     if (res.status === 404) return [];
@@ -785,7 +783,7 @@
     // Load recent messages
     const msgFiles = await ghList('messages');
     const msgs = [];
-    for (const f of msgFiles.slice(-10)) {
+    for (const f of msgFiles) {
       if (!f.name.endsWith('.json')) continue;
       try {
         const msg = await ghGet(`messages/${f.name}`);
@@ -801,7 +799,7 @@
       // Attempt to decrypt messages using the portal password
       // iOS encrypts using the SHA-256 hash of the password (retrieveHash()), not the plain text.
       // PASS_HASH is that hash — must match what CryptoHelper used as the HKDF input key.
-      window._allDecryptedMsgs = await Promise.all(msgs.slice(0,20).map(async m => {
+      window._allDecryptedMsgs = await Promise.all(msgs.map(async m => {
         const decSubject = await decryptPayload(m.subject, PASS_HASH);
         const decBody    = await decryptPayload(m.body,    PASS_HASH);
         return {
