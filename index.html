@@ -791,7 +791,9 @@
               <div class="device-badges" style="flex-shrink:0">
                 <span class="badge" style="background:rgba(79,142,247,0.1);color:${typeColor}">${(m.type||'message').toUpperCase()}</span>
                 ${m.encrypted ? '<span class="badge" style="background:rgba(34,197,94,0.12);color:var(--green)">🔒 Encrypted</span>' : ''}
-                ${m.read ? '' : '<span class="badge badge-pkg">Unread</span>'}
+                ${m.read 
+                  ? '<span class="badge" style="background:rgba(107,114,128,0.15);color:var(--muted)">✓ Read</span>' 
+                  : '<span class="badge badge-pkg">Unread</span>'}
               </div>
             </div>
             <div class="msg-body" id="${bodyId}">${m.body.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
