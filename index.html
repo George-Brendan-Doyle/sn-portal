@@ -351,6 +351,34 @@
 
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* Message body */
+  .msg-body {
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.55;
+    max-height: 72px;        /* ~4 lines before truncation */
+    overflow: hidden;
+    transition: max-height 0.25s ease;
+    color: var(--text);
+    font-size: 12px;
+    font-family: 'Inter', sans-serif;
+    margin-top: 5px;
+  }
+
+  .msg-body.expanded { max-height: 600px; }
+
+  .msg-toggle {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    cursor: pointer;
+    padding: 2px 0;
+    margin-top: 2px;
+    display: none;   /* shown via JS when body overflows */
+  }
+
   footer {
     text-align: center;
     padding: 32px;
@@ -397,7 +425,7 @@
   <!-- Dashboard -->
   <div id="dashboard">
     <div class="dash-header">
-      <div class="dash-title">New Network Status</div>
+      <div class="dash-title">Network Status</div>
       <button class="refresh-btn" onclick="loadDashboard()">
         <span>↻</span> Refresh
       </button>
@@ -467,7 +495,8 @@
     const r = sessionStorage.getItem('sn_repo');
     const h = sessionStorage.getItem('sn_hash');
     if (t && r) {
-      TOKEN = t; REPO = r; PASS_HASH = h || '';
+      const p = sessionStorage.getItem('sn_plain');
+      TOKEN = t; REPO = r; PASS_HASH = h || ''; PASS_PLAIN = p || '';
       document.getElementById('gate').style.display = 'none';
       document.getElementById('dashboard').style.display = 'block';
       loadDashboard();
@@ -547,6 +576,7 @@
       sessionStorage.setItem('sn_token', TOKEN);
       sessionStorage.setItem('sn_repo', REPO);
       sessionStorage.setItem('sn_hash', PASS_HASH);
+      sessionStorage.setItem('sn_plain', PASS_PLAIN);
       document.getElementById('gate').style.display = 'none';
       document.getElementById('dashboard').style.display = 'block';
       loadDashboard(res);
@@ -740,23 +770,44 @@
           encrypted: decSubject !== null && decSubject !== m.subject
         };
       }));
-      msgGrid.innerHTML = decryptedMsgs.map(m => {
+      msgGrid.innerHTML = decryptedMsgs.map((m, idx) => {
         const typeColor = m.type === 'command' ? 'var(--amber)' : m.type === 'alert' ? 'var(--red)' : 'var(--accent)';
+        const bodyId    = `msg-body-${idx}`;
+        const toggleId  = `msg-toggle-${idx}`;
         return `
-          <div class="device-card">
-            <div class="device-info">
-              <div class="device-name" style="font-size:13px">${m.subject}</div>
-              <div class="device-meta">${m.fromDevice} → ${m.toDevice} &nbsp;·&nbsp; ${timeAgo(m.timestamp)}</div>
-              <div class="device-meta" style="margin-top:4px;color:var(--text)">${m.body}</div>
+          <div class="device-card" style="flex-direction:column;align-items:flex-start;gap:8px">
+            <div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:12px">
+              <div class="device-info">
+                <div class="device-name" style="font-size:13px">${m.subject}</div>
+                <div class="device-meta">${m.fromDevice} → ${m.toDevice} &nbsp;·&nbsp; ${timeAgo(m.timestamp)}</div>
+              </div>
+              <div class="device-badges" style="flex-shrink:0">
+                <span class="badge" style="background:rgba(79,142,247,0.1);color:${typeColor}">${(m.type||'message').toUpperCase()}</span>
+                ${m.encrypted ? '<span class="badge" style="background:rgba(34,197,94,0.12);color:var(--green)">🔒 Encrypted</span>' : ''}
+                ${m.read ? '' : '<span class="badge badge-pkg">Unread</span>'}
+              </div>
             </div>
-            <div class="device-badges">
-              <span class="badge" style="background:rgba(79,142,247,0.1);color:${typeColor}">${(m.type||'message').toUpperCase()}</span>
-              ${m.encrypted ? '<span class="badge" style="background:rgba(34,197,94,0.12);color:var(--green)">🔒 Encrypted</span>' : ''}
-              ${m.read ? '' : '<span class="badge badge-pkg">Unread</span>'}
-            </div>
+            <div class="msg-body" id="${bodyId}">${m.body.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+            <button class="msg-toggle" id="${toggleId}" onclick="toggleBody('${bodyId}','${toggleId}')">Show more ▾</button>
           </div>`;
       }).join('');
+      // After rendering, show expand toggle for any body that overflows
+      decryptedMsgs.forEach((_, idx) => {
+        const bodyEl   = document.getElementById(`msg-body-${idx}`);
+        const toggleEl = document.getElementById(`msg-toggle-${idx}`);
+        if (bodyEl && toggleEl && bodyEl.scrollHeight > bodyEl.clientHeight + 4) {
+          toggleEl.style.display = 'block';
+        }
+      });
     }
+  }
+
+  function toggleBody(bodyId, toggleId) {
+    const el = document.getElementById(bodyId);
+    const btn = document.getElementById(toggleId);
+    if (!el || !btn) return;
+    el.classList.toggle('expanded');
+    btn.textContent = el.classList.contains('expanded') ? 'Show less ▴' : 'Show more ▾';
   }
 
   document.addEventListener('keydown', e => {
