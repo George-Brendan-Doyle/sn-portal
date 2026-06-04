@@ -978,7 +978,7 @@
       if (!f.name.endsWith('.json')) continue;
       try {
         const msg = await ghGet(`messages/${f.name}`);
-        if (msg) msgs.push(msg);
+        if (msg) msgs.push({ ...msg, _sourceFile: f.name });
       } catch(e) {}
     }
 
@@ -995,9 +995,11 @@
         const decBody    = await decryptPayload(m.body,    PASS_HASH);
         return {
           ...m,
-          subject:   decSubject || m.subject,
-          body:      decBody    || m.body,
-          encrypted: decSubject !== null && decSubject !== m.subject
+          _rawSubject: m.subject,  // preserve original (possibly encrypted) for archiving
+          _rawBody:    m.body,
+          subject:     decSubject || m.subject,
+          body:        decBody    || m.body,
+          encrypted:   decSubject !== null && decSubject !== m.subject
         };
       }));
       // Auto-archive read messages older than ARCHIVE_DAYS
@@ -1205,20 +1207,21 @@
     const toAdd = msgs.map(m => ({
       id: m.id, fromDevice: m.fromDevice, toDevice: m.toDevice,
       timestamp: m.timestamp, type: m.type,
-      subject: m.subject, body: m.body, read: m.read,
+      // Store raw (possibly encrypted) subject/body so restore writes back correctly
+      subject: m._rawSubject || m.subject,
+      body:    m._rawBody    || m.body,
+      read: m.read,
+      _sourceFile: m._sourceFile || null,  // original filename for deletion
       archivedAt: new Date().toISOString()
     }));
     const updated = [...existing, ...toAdd];
     const ok = await ghPut('archive/archive.json', updated, 'archive: ' + msgs.length + ' message(s)');
     if (!ok) { alert('Failed to write archive.'); return false; }
-    // Delete live message files — best effort
-    const liveFiles = await ghList('messages');
+    // Delete live message files by stored source filename
     for (const m of msgs) {
-      const match = liveFiles.find(f => f.name.endsWith('.json') && f.name.includes(m.id ||
-        (m.fromDevice || '').replace(/ /g,'_')));
-      // Fall back: delete by scanning for matching id in content would require re-fetching.
-      // For portal-triggered archive, delete the file whose content id matches.
-      if (match) await ghDelete('messages/' + match.name, 'archive: remove ' + match.name);
+      if (m._sourceFile) {
+        await ghDelete('messages/' + m._sourceFile, 'archive: remove ' + m._sourceFile);
+      }
     }
     if (refreshUI) {
       _archiveData = null;
