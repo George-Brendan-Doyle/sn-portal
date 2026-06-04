@@ -306,6 +306,13 @@
   .badge-single  { background: rgba(107,114,128,0.2);  color: var(--muted); }
   .badge-blocked { background: rgba(239,68,68,0.15);   color: var(--red); }
   .badge-pkg     { background: rgba(245,158,11,0.15);  color: var(--amber); }
+  .badge-latest  { background: rgba(34,197,94,0.15);   color: var(--green); }
+  .badge-behind  { background: rgba(245,158,11,0.15);  color: var(--amber); }
+
+  .device-card.device-selected {
+    border-color: var(--accent);
+    background: rgba(79,142,247,0.06);
+  }
 
   /* Status banner */
   .status-banner {
@@ -491,13 +498,16 @@
     </div>
 
     <!-- Messages -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <div class="section-title" style="margin-bottom:0">Recent Messages</div>
       <div class="msg-filter-bar" style="margin-bottom:0">
         <button class="filter-pill active" id="pill-all"    onclick="setMsgFilter('all')">All</button>
         <button class="filter-pill"        id="pill-unread" onclick="setMsgFilter('unread')">Unread</button>
         <button class="filter-pill"        id="pill-read"   onclick="setMsgFilter('read')">Read</button>
       </div>
+    </div>
+    <div class="msg-filter-bar" id="device-filter-bar" style="margin-bottom:12px">
+      <button class="filter-pill active" id="pill-device-all" onclick="setDeviceFilter('all')">All Devices</button>
     </div>
     <div class="devices-grid" id="messages-grid">
       <div class="loading"><span class="spinner"></span>Loading messages…</div>
@@ -517,6 +527,7 @@
   let PASS_HASH = '';
   let PASS_PLAIN = ''; // kept in memory for message decryption — never stored
   let MSG_FILTER = 'all'; // 'all' | 'unread' | 'read'
+  let DEVICE_FILTER = 'all'; // 'all' | device name
 
   function updateClock() {
     document.getElementById('header-time').textContent = new Date().toUTCString().replace(' GMT','') + ' UTC';
@@ -752,6 +763,17 @@
         grid.parentNode.insertBefore(summary, grid);
       }
 
+      // Find the newest build across all devices
+      // buildNumber format: "abc1234 04 Jun 15:30"
+      const buildNumbers = allDevices.map(b => b.buildNumber).filter(Boolean);
+      const parseBuildTime = bn => {
+        const match = bn.match(/\d{2} \w{3} \d{2}:\d{2}/);
+        return match ? new Date(match[0] + ' ' + new Date().getFullYear()) : new Date(0);
+      };
+      const latestBuild = buildNumbers.reduce((best, bn) =>
+        parseBuildTime(bn) > parseBuildTime(best) ? bn : best, buildNumbers[0] || '');
+      const multipleBuilds = new Set(buildNumbers).size > 1;
+
       grid.innerHTML = allDevices.map(b => {
         const online    = isOnline(b.timestamp);
         const isBlocked = blocked.includes(b.device);
@@ -762,14 +784,20 @@
         const pendingHTML = pending.map(c =>
           `<span class="badge" style="background:rgba(245,158,11,0.15);color:var(--amber)" title="Changed by ${c.changedBy}">${c.isAllowed ? '✓ Unblock pending' : '⊘ Block pending'}</span>`
         ).join('');
+        const isLatest  = multipleBuilds && b.buildNumber && b.buildNumber === latestBuild;
+        const isBehind  = multipleBuilds && b.buildNumber && b.buildNumber !== latestBuild;
+        const buildBadge = isLatest ? '<span class="badge badge-latest">✓ Latest</span>'
+                         : isBehind ? '<span class="badge badge-behind">⬆ Behind</span>'
+                         : '';
         return `
-          <div class="device-card ${isBlocked ? 'blocked' : ''}">
+          <div class="device-card ${isBlocked ? 'blocked' : ''}" style="cursor:pointer" onclick="setDeviceFilter('${b.device}')" title="Click to filter messages for ${b.device}">
             <div class="status-dot ${dotCls}"></div>
             <div class="device-info">
               <div class="device-name">${b.device}</div>
               <div class="device-meta">${b.appVersion && b.appVersion !== '—' ? 'v' + b.appVersion + (b.buildNumber ? ' (' + b.buildNumber + ')' : '') + ' &nbsp;·&nbsp; ' : ''}${lastSeen}</div>
             </div>
             <div class="device-badges">
+              ${buildBadge}
               ${b.networkRole && b.networkRole !== 'unknown' ? roleBadge(b.networkRole) : ''}
               ${neverSeen ? '<span class="badge" style="background:rgba(107,114,128,0.2);color:var(--muted)">Never seen</span>' : ''}
               ${isBlocked ? '<span class="badge badge-blocked">Blocked</span>' : ''}
@@ -810,6 +838,16 @@
         };
       }));
       renderMessages();
+
+      // Populate device filter pills from loaded devices
+      const bar = document.getElementById('device-filter-bar');
+      if (bar) {
+        const deviceNames = allDevices.filter(b => !b._registryOnly || b.timestamp).map(b => b.device);
+        bar.innerHTML = '<button class="filter-pill ' + (DEVICE_FILTER === 'all' ? 'active' : '') + '" id="pill-device-all" onclick="setDeviceFilter('all')">All Devices</button>'
+          + deviceNames.map(d =>
+            '<button class="filter-pill ' + (DEVICE_FILTER === d ? 'active' : '') + '" id="pill-device-' + d.replace(/\s/g,'-') + '" onclick="setDeviceFilter('' + d + '')">' + d + '</button>'
+          ).join('');
+      }
     }
   }
 
@@ -823,13 +861,40 @@
     renderMessages();
   }
 
+  function setDeviceFilter(device) {
+    DEVICE_FILTER = device;
+    // Update device pill highlights
+    const bar = document.getElementById('device-filter-bar');
+    if (bar) {
+      bar.querySelectorAll('.filter-pill').forEach(btn => btn.classList.remove('active'));
+      const activeId = device === 'all' ? 'pill-device-all' : 'pill-device-' + device.replace(/\s/g,'-');
+      document.getElementById(activeId)?.classList.add('active');
+    }
+    // Highlight selected device card
+    document.querySelectorAll('.device-card').forEach(card => {
+      card.classList.remove('device-selected');
+    });
+    if (device !== 'all') {
+      document.querySelectorAll('.device-card').forEach(card => {
+        if (card.querySelector('.device-name')?.textContent === device) {
+          card.classList.add('device-selected');
+          card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
+    }
+    renderMessages();
+  }
+
   function renderMessages() {
     const msgGrid = document.getElementById('messages-grid');
     if (!msgGrid) return;
     const all = window._allDecryptedMsgs || [];
-    const filtered = MSG_FILTER === 'unread' ? all.filter(m => !m.read)
-                   : MSG_FILTER === 'read'   ? all.filter(m =>  m.read)
-                   : all;
+    // Apply device filter first, then read/unread filter
+    const deviceFiltered = DEVICE_FILTER === 'all' ? all
+      : all.filter(m => m.fromDevice === DEVICE_FILTER || m.toDevice === DEVICE_FILTER);
+    const filtered = MSG_FILTER === 'unread' ? deviceFiltered.filter(m => !m.read)
+                   : MSG_FILTER === 'read'   ? deviceFiltered.filter(m =>  m.read)
+                   : deviceFiltered;
     if (filtered.length === 0) {
       const label = MSG_FILTER === 'unread' ? 'No unread messages'
                   : MSG_FILTER === 'read'   ? 'No read messages'
