@@ -1253,7 +1253,7 @@
         // Use raw (encrypted) payload stored at archive time, not decrypted display value
         subject: msg._rawSubject || msg.subject,
         body:    msg._rawBody    || msg.body,
-        read: false
+        read: msg.read
       }, 'restore: ' + msg.id);
     }
     // Remove restored messages from archive.json
