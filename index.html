@@ -711,7 +711,7 @@
     // Add known devices that have no heartbeat
     known.forEach(d => {
       if (!beatMap[d.name]) {
-        beatMap[d.name] = { device: d.name, timestamp: null, appVersion: '—', networkRole: 'unknown', requestPackage: false, _registryOnly: true, _allowed: d.isAllowed };
+        beatMap[d.name] = { device: d.name, timestamp: null, appVersion: '—', buildNumber: null, networkRole: 'unknown', requestPackage: false, _registryOnly: true, _allowed: d.isAllowed };
       }
     });
 
@@ -767,7 +767,7 @@
             <div class="status-dot ${dotCls}"></div>
             <div class="device-info">
               <div class="device-name">${b.device}</div>
-              <div class="device-meta">${b.appVersion !== '—' ? 'v' + b.appVersion + ' &nbsp;·&nbsp; ' : ''}${lastSeen}</div>
+              <div class="device-meta">${b.appVersion && b.appVersion !== '—' ? 'v' + b.appVersion + (b.buildNumber ? ' (' + b.buildNumber + ')' : '') + ' &nbsp;·&nbsp; ' : ''}${lastSeen}</div>
             </div>
             <div class="device-badges">
               ${b.networkRole && b.networkRole !== 'unknown' ? roleBadge(b.networkRole) : ''}
