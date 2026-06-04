@@ -843,11 +843,13 @@
       const dbar = document.getElementById('device-filter-bar');
       if (dbar) {
         const deviceNames = allDevices.filter(b => b.timestamp).map(b => b.device);
-        let pillsHTML = `<button class="filter-pill ${DEVICE_FILTER === 'all' ? 'active' : ''}" id="pill-device-all" onclick="setDeviceFilter('all')">All Devices</button>`;
+        const allActive = DEVICE_FILTER === 'all' ? 'active' : '';
+        let pillsHTML = '<button class="filter-pill ' + allActive + '" id="pill-device-all" onclick="setDeviceFilter(\'all\')">All Devices</button>';
         deviceNames.forEach(d => {
           const safeId = 'pill-device-' + d.replace(/[^a-zA-Z0-9]/g, '-');
           const isActive = DEVICE_FILTER === d ? 'active' : '';
-          pillsHTML += `<button class="filter-pill ${isActive}" id="${safeId}" onclick="setDeviceFilter('${d.replace(/'/g, "\\'")}')">${d}</button>`;
+          const safeD = d.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+          pillsHTML += '<button class="filter-pill ' + isActive + '" id="' + safeId + '" onclick="setDeviceFilter(\'' + safeD + '\')">' + d + '</button>';
         });
         dbar.innerHTML = pillsHTML;
       }
