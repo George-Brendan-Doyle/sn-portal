@@ -418,6 +418,92 @@
   }
 
   footer a { color: var(--accent); text-decoration: none; }
+
+  /* Archive section */
+  .archive-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 8px;
+    transition: border-color 0.2s;
+    user-select: none;
+  }
+  .archive-toggle:hover { border-color: var(--border2); }
+  .archive-toggle-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .archive-toggle-label .archive-count {
+    background: var(--surface2);
+    border-radius: 10px;
+    padding: 2px 8px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .archive-chevron {
+    font-size: 12px;
+    color: var(--muted);
+    transition: transform 0.2s;
+  }
+  .archive-chevron.open { transform: rotate(180deg); }
+  .archive-panel { display: none; margin-bottom: 32px; }
+  .archive-panel.open { display: block; }
+  .archive-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .archive-toolbar .filter-pill { margin: 0; }
+  .btn-action {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border2);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.04em;
+  }
+  .btn-action:hover { color: var(--text); border-color: var(--accent); }
+  .btn-action.danger:hover { color: var(--red); border-color: var(--red); }
+  .btn-action.confirm { color: var(--green); border-color: var(--green); }
+  .msg-checkbox {
+    width: 15px; height: 15px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-right: 4px;
+  }
+  .select-bar {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(79,142,247,0.08);
+    border: 1px solid rgba(79,142,247,0.2);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+  }
+  .select-bar.visible { display: flex; }
+  .select-bar span { flex: 1; }
 </style>
 </head>
 <body>
@@ -500,10 +586,13 @@
     <!-- Messages -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <div class="section-title" style="margin-bottom:0">Recent Messages</div>
-      <div class="msg-filter-bar" style="margin-bottom:0">
-        <button class="filter-pill active" id="pill-all"    onclick="setMsgFilter('all')">All</button>
-        <button class="filter-pill"        id="pill-unread" onclick="setMsgFilter('unread')">Unread</button>
-        <button class="filter-pill"        id="pill-read"   onclick="setMsgFilter('read')">Read</button>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn-action" onclick="archiveLiveSelected()" title="Archive selected messages">⊞ Archive Selected</button>
+        <div class="msg-filter-bar" style="margin-bottom:0">
+          <button class="filter-pill active" id="pill-all"    onclick="setMsgFilter('all')">All</button>
+          <button class="filter-pill"        id="pill-unread" onclick="setMsgFilter('unread')">Unread</button>
+          <button class="filter-pill"        id="pill-read"   onclick="setMsgFilter('read')">Read</button>
+        </div>
       </div>
     </div>
     <div class="msg-filter-bar" id="device-filter-bar" style="margin-bottom:12px">
@@ -511,6 +600,30 @@
     </div>
     <div class="devices-grid" id="messages-grid">
       <div class="loading"><span class="spinner"></span>Loading messages…</div>
+    </div>
+  </div>
+
+    <!-- Archive -->
+    <div class="archive-toggle" onclick="toggleArchivePanel()">
+      <div class="archive-toggle-label">
+        ▣ &nbsp;Message Archive
+        <span class="archive-count" id="archive-count">—</span>
+      </div>
+      <span class="archive-chevron" id="archive-chevron">▾</span>
+    </div>
+    <div class="archive-panel" id="archive-panel">
+      <div class="archive-toolbar">
+        <button class="btn-action" onclick="selectAllArchive()">Select All</button>
+        <button class="btn-action" onclick="selectNoneArchive()">None</button>
+        <button class="btn-action" onclick="restoreSelected()">↩ Restore Selected</button>
+        <button class="btn-action danger" onclick="deleteSelected()">✕ Delete Selected</button>
+      </div>
+      <div class="select-bar" id="archive-select-bar">
+        <span id="archive-select-label">0 selected</span>
+      </div>
+      <div class="devices-grid" id="archive-grid">
+        <div class="loading">Expand to load archive…</div>
+      </div>
     </div>
   </div>
 
@@ -528,6 +641,9 @@
   let PASS_PLAIN = ''; // kept in memory for message decryption — never stored
   let MSG_FILTER = 'all';    // 'all' | 'unread' | 'read'
   let DEVICE_FILTER = 'all'; // 'all' | device name
+  let ARCHIVE_DAYS  = parseInt(localStorage.getItem('sn_archive_days') || '30', 10);
+  let _archiveData  = null;  // cached archive array — null = not loaded yet
+  let _archiveOpen  = false; // panel state
 
   function updateClock() {
     document.getElementById('header-time').textContent = new Date().toUTCString().replace(' GMT','') + ' UTC';
@@ -665,6 +781,53 @@
     if (res.status === 404) return [];
     if (!res.ok) return [];
     return await res.json();
+  }
+
+  async function ghGetSHA(path) {
+    const url = 'https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + path;
+    const res = await fetch(url, { cache: 'no-store', headers: {
+      'Authorization': 'Bearer ' + TOKEN,
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    }});
+    if (!res.ok) return null;
+    const d = await res.json();
+    return Array.isArray(d) ? null : (d.sha || null);
+  }
+
+  async function ghPut(path, content, commitMsg) {
+    const url = 'https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + path;
+    const sha = await ghGetSHA(path);
+    const body = { message: commitMsg, content: btoa(unescape(encodeURIComponent(JSON.stringify(content, null, 2)))) };
+    if (sha) body.sha = sha;
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'Bearer ' + TOKEN,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    return res.ok;
+  }
+
+  async function ghDelete(path, commitMsg) {
+    const sha = await ghGetSHA(path);
+    if (!sha) return true; // already gone
+    const url = 'https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + path;
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': 'Bearer ' + TOKEN,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ message: commitMsg, sha })
+    });
+    return res.ok;
   }
 
   function timeAgo(isoStr) {
@@ -837,6 +1000,17 @@
           encrypted: decSubject !== null && decSubject !== m.subject
         };
       }));
+      // Auto-archive read messages older than ARCHIVE_DAYS
+      const cutoff = Date.now() - ARCHIVE_DAYS * 86400000;
+      const toArchive = msgs.filter(m => m.read && new Date(m.timestamp).getTime() < cutoff);
+      if (toArchive.length > 0) {
+        console.log('[ARCHIVE] Auto-archiving ' + toArchive.length + ' old read message(s)');
+        await archiveMessages(toArchive, false); // silent — no UI refresh
+        // Remove auto-archived messages from the live decrypted list
+        const archivedIds = new Set(toArchive.map(m => m.id));
+        window._allDecryptedMsgs = window._allDecryptedMsgs.filter(m => !archivedIds.has(m.id));
+      }
+
       renderMessages();
 
       // Populate device filter pills
@@ -907,6 +1081,7 @@
         return `
           <div class="device-card" style="flex-direction:column;align-items:flex-start;gap:8px">
             <div style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:12px">
+              <input type="checkbox" class="msg-checkbox live-msg-cb" data-idx="${idx}" style="flex-shrink:0">
               <div class="device-info">
                 <div class="device-name" style="font-size:13px">${m.subject}</div>
                 <div class="device-meta">${m.fromDevice} → ${m.toDevice} &nbsp;·&nbsp; ${timeAgo(m.timestamp)}</div>
@@ -931,6 +1106,177 @@
           toggleEl.style.display = 'block';
         }
       });
+  }
+
+  // MARK: - Archive
+
+  function toggleArchivePanel() {
+    _archiveOpen = !_archiveOpen;
+    document.getElementById('archive-panel').classList.toggle('open', _archiveOpen);
+    document.getElementById('archive-chevron').classList.toggle('open', _archiveOpen);
+    if (_archiveOpen && _archiveData === null) loadArchive();
+  }
+
+  async function loadArchive() {
+    const grid = document.getElementById('archive-grid');
+    grid.innerHTML = '<div class="loading"><span class="spinner"></span>Loading archive…</div>';
+    const raw = await ghGet('archive/archive.json');
+    _archiveData = raw ? (Array.isArray(raw) ? raw : []) : [];
+
+    // Decrypt archive messages
+    _archiveData = await Promise.all(_archiveData.map(async m => {
+      const decSubject = await decryptPayload(m.subject, PASS_HASH);
+      const decBody    = await decryptPayload(m.body,    PASS_HASH);
+      return { ...m, subject: decSubject || m.subject, body: decBody || m.body,
+               encrypted: decSubject !== null && decSubject !== m.subject };
+    }));
+    _archiveData.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    document.getElementById('archive-count').textContent = _archiveData.length;
+    renderArchive();
+  }
+
+  function renderArchive() {
+    const grid = document.getElementById('archive-grid');
+    if (!_archiveData || _archiveData.length === 0) {
+      grid.innerHTML = '<div class="loading">Archive is empty</div>';
+      return;
+    }
+    grid.innerHTML = _archiveData.map((m, idx) => {
+      const typeColor = m.type === 'command' ? 'var(--amber)' : m.type === 'alert' ? 'var(--red)' : 'var(--accent)';
+      const bodyId   = 'arc-body-' + idx;
+      const togId    = 'arc-tog-' + idx;
+      return '<div class="device-card" style="flex-direction:column;align-items:flex-start;gap:8px">'
+        + '<div style="display:flex;align-items:center;width:100%;gap:10px">'
+        + '<input type="checkbox" class="msg-checkbox archive-cb" data-idx="' + idx + '" onchange="updateArchiveSelectBar()">'
+        + '<div class="device-info" style="flex:1;min-width:0">'
+        + '<div class="device-name" style="font-size:13px">' + m.subject + '</div>'
+        + '<div class="device-meta">' + m.fromDevice + ' → ' + m.toDevice + ' &nbsp;·&nbsp; ' + timeAgo(m.timestamp) + ' &nbsp;·&nbsp; archived</div>'
+        + '</div>'
+        + '<div class="device-badges" style="flex-shrink:0">'
+        + '<span class="badge" style="background:rgba(79,142,247,0.1);color:' + typeColor + '">' + (m.type||'message').toUpperCase() + '</span>'
+        + (m.encrypted ? '<span class="badge" style="background:rgba(34,197,94,0.12);color:var(--green)">🔒 Encrypted</span>' : '')
+        + '</div></div>'
+        + '<div class="msg-body" id="' + bodyId + '">' + m.body.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</div>'
+        + '<button class="msg-toggle" id="' + togId + '" onclick="toggleBody(\'' + bodyId + '\',\'' + togId + '\')">Show more ▾</button>'
+        + '</div>';
+    }).join('');
+    // Show expand toggle for overflowing bodies
+    _archiveData.forEach((_, idx) => {
+      const bodyEl = document.getElementById('arc-body-' + idx);
+      const togEl  = document.getElementById('arc-tog-' + idx);
+      if (bodyEl && togEl && bodyEl.scrollHeight > bodyEl.clientHeight + 4) togEl.style.display = 'block';
+    });
+    updateArchiveSelectBar();
+  }
+
+  function updateArchiveSelectBar() {
+    const cbs  = document.querySelectorAll('.archive-cb:checked');
+    const bar  = document.getElementById('archive-select-bar');
+    const lbl  = document.getElementById('archive-select-label');
+    lbl.textContent = cbs.length + ' selected';
+    bar.classList.toggle('visible', cbs.length > 0);
+  }
+
+  function selectAllArchive() {
+    document.querySelectorAll('.archive-cb').forEach(cb => cb.checked = true);
+    updateArchiveSelectBar();
+  }
+
+  function selectNoneArchive() {
+    document.querySelectorAll('.archive-cb').forEach(cb => cb.checked = false);
+    updateArchiveSelectBar();
+  }
+
+  function getSelectedArchiveMessages() {
+    const selected = [];
+    document.querySelectorAll('.archive-cb:checked').forEach(cb => {
+      const idx = parseInt(cb.dataset.idx, 10);
+      if (_archiveData[idx]) selected.push({ msg: _archiveData[idx], idx });
+    });
+    return selected;
+  }
+
+  async function archiveMessages(msgs, refreshUI = true) {
+    // Load current archive
+    const raw = await ghGet('archive/archive.json');
+    const existing = raw ? (Array.isArray(raw) ? raw : []) : [];
+    // Append new messages (store original encrypted form — use m from live msgs array)
+    const toAdd = msgs.map(m => ({
+      id: m.id, fromDevice: m.fromDevice, toDevice: m.toDevice,
+      timestamp: m.timestamp, type: m.type,
+      subject: m.subject, body: m.body, read: m.read,
+      archivedAt: new Date().toISOString()
+    }));
+    const updated = [...existing, ...toAdd];
+    const ok = await ghPut('archive/archive.json', updated, 'archive: ' + msgs.length + ' message(s)');
+    if (!ok) { alert('Failed to write archive.'); return false; }
+    // Delete live message files — best effort
+    const liveFiles = await ghList('messages');
+    for (const m of msgs) {
+      const match = liveFiles.find(f => f.name.endsWith('.json') && f.name.includes(m.id ||
+        (m.fromDevice || '').replace(/ /g,'_')));
+      // Fall back: delete by scanning for matching id in content would require re-fetching.
+      // For portal-triggered archive, delete the file whose content id matches.
+      if (match) await ghDelete('messages/' + match.name, 'archive: remove ' + match.name);
+    }
+    if (refreshUI) {
+      _archiveData = null;
+      await loadArchive();
+      await loadDashboard();
+    }
+    return true;
+  }
+
+  async function restoreSelected() {
+    const selected = getSelectedArchiveMessages();
+    if (selected.length === 0) { alert('Select messages to restore first.'); return; }
+    if (!confirm('Restore ' + selected.length + ' message(s) to live inbox?')) return;
+
+    const ts = new Date().toISOString().replace(/:/g,'-').replace(/\..+/,'');
+    for (const { msg } of selected) {
+      const safeFrom = (msg.fromDevice || 'unknown').replace(/ /g,'_');
+      const safeTo   = (msg.toDevice   || 'unknown').replace(/ /g,'_');
+      const path = 'messages/' + safeTo + '_from_' + safeFrom + '_' + ts + '_restored.json';
+      await ghPut(path, {
+        id: msg.id, fromDevice: msg.fromDevice, toDevice: msg.toDevice,
+        timestamp: msg.timestamp, type: msg.type,
+        subject: msg.subject, body: msg.body, read: false
+      }, 'restore: ' + msg.id);
+    }
+    // Remove restored messages from archive.json
+    const restoredIds = new Set(selected.map(s => s.msg.id));
+    const raw = await ghGet('archive/archive.json');
+    const remaining = raw ? (Array.isArray(raw) ? raw : []).filter(m => !restoredIds.has(m.id)) : [];
+    await ghPut('archive/archive.json', remaining, 'archive: removed ' + selected.length + ' restored');
+    _archiveData = null;
+    await loadArchive();
+    await loadDashboard();
+  }
+
+  async function deleteSelected() {
+    const selected = getSelectedArchiveMessages();
+    if (selected.length === 0) { alert('Select messages to delete first.'); return; }
+    if (!confirm('Permanently delete ' + selected.length + ' message(s)? This cannot be undone.')) return;
+    const deletedIds = new Set(selected.map(s => s.msg.id));
+    const raw = await ghGet('archive/archive.json');
+    const remaining = raw ? (Array.isArray(raw) ? raw : []).filter(m => !deletedIds.has(m.id)) : [];
+    await ghPut('archive/archive.json', remaining, 'archive: permanently deleted ' + selected.length);
+    _archiveData = null;
+    await loadArchive();
+  }
+
+  // Also expose archiveSelected for live messages (checkbox select + Archive button)
+  async function archiveLiveSelected() {
+    const cbs = document.querySelectorAll('.live-msg-cb:checked');
+    if (cbs.length === 0) { alert('Select messages to archive first.'); return; }
+    const toArchive = [];
+    cbs.forEach(cb => {
+      const idx = parseInt(cb.dataset.idx, 10);
+      if (window._allDecryptedMsgs[idx]) toArchive.push(window._allDecryptedMsgs[idx]);
+    });
+    if (!confirm('Archive ' + toArchive.length + ' message(s)?')) return;
+    await archiveMessages(toArchive, true);
   }
 
   function logout() {
