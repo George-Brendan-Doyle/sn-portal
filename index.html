@@ -1210,16 +1210,32 @@
     const raw = await ghGet('archive/archive.json');
     const existing = raw ? (Array.isArray(raw) ? raw : []) : [];
     // Append new messages (store original encrypted form — use m from live msgs array)
-    const toAdd = msgs.map(m => ({
-      id: m.id, fromDevice: m.fromDevice, toDevice: m.toDevice,
-      timestamp: m.timestamp, type: m.type,
-      // Store raw (possibly encrypted) subject/body so restore writes back correctly
-      subject: m._rawSubject || m.subject,
-      body:    m._rawBody    || m.body,
-      read: m.read,
-      _sourceFile: m._sourceFile || null,  // original filename for deletion
-      archivedAt: new Date().toISOString()
-    }));
+    // Re-fetch each message file for current state before archiving
+    const toAdd = [];
+    for (const m of msgs) {
+      let liveRead = m.read;
+      let liveSubject = m._rawSubject || m.subject;
+      let liveBody    = m._rawBody    || m.body;
+      if (m._sourceFile) {
+        try {
+          const fresh = await ghGet('messages/' + m._sourceFile);
+          if (fresh) {
+            liveRead    = fresh.read;
+            liveSubject = fresh.subject;
+            liveBody    = fresh.body;
+          }
+        } catch(e) { /* fall back to cached values */ }
+      }
+      toAdd.push({
+        id: m.id, fromDevice: m.fromDevice, toDevice: m.toDevice,
+        timestamp: m.timestamp, type: m.type,
+        subject: liveSubject,
+        body:    liveBody,
+        read:    liveRead,
+        _sourceFile: m._sourceFile || null,
+        archivedAt: new Date().toISOString()
+      });
+    }
     const updated = [...existing, ...toAdd];
     const ok = await ghPut('archive/archive.json', updated, 'archive: ' + msgs.length + ' message(s)');
     if (!ok) { alert('Failed to write archive.'); return false; }
