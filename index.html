@@ -485,6 +485,76 @@
   .btn-device.success { border-color: rgba(34,197,94,0.4); color: var(--green); }
   .btn-device.success:hover { background: rgba(34,197,94,0.1); border-color: var(--green); }
   .archive-panel.open { display: block; }
+
+  /* Track Modal */
+  .track-modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .track-modal {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 16px;
+    width: 100%; max-width: 560px;
+    max-height: 80vh;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .track-modal-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .track-modal-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px; font-weight: 600;
+  }
+  .track-modal-close {
+    background: none; border: none; color: var(--muted);
+    font-size: 20px; cursor: pointer; line-height: 1;
+    padding: 0 4px;
+  }
+  .track-modal-close:hover { color: var(--text); }
+  .track-modal-actions {
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex; gap: 8px; flex-shrink: 0;
+  }
+  .track-modal-body {
+    overflow-y: auto; padding: 12px 24px 20px;
+    flex: 1;
+  }
+  .track-entry {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .track-entry:last-child { border-bottom: none; }
+  .track-entry-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); flex-shrink: 0; margin-top: 4px;
+  }
+  .track-entry-dot.first { background: var(--green); }
+  .track-entry-dot.last  { background: var(--red); }
+  .track-entry-info { flex: 1; min-width: 0; }
+  .track-entry-time {
+    font-family: 'DM Mono', monospace; font-size: 11px;
+    color: var(--muted); margin-bottom: 2px;
+  }
+  .track-entry-coords {
+    font-family: 'DM Mono', monospace; font-size: 12px;
+    color: var(--text);
+  }
+  .track-entry-link {
+    font-size: 10px; color: var(--accent);
+    text-decoration: none; font-family: 'DM Mono', monospace;
+    flex-shrink: 0; margin-top: 2px;
+  }
+  .track-entry-link:hover { text-decoration: underline; }
   .archive-toolbar {
     display: flex;
     align-items: center;
@@ -649,6 +719,23 @@
       </div>
       <div class="devices-grid" id="archive-grid">
         <div class="loading">Expand to load archive…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Track Modal -->
+  <div id="track-modal-backdrop" class="track-modal-backdrop" style="display:none" onclick="if(event.target===this)closeTrackModal()">
+    <div class="track-modal">
+      <div class="track-modal-header">
+        <div class="track-modal-title" id="track-modal-title">Device Track</div>
+        <button class="track-modal-close" onclick="closeTrackModal()">✕</button>
+      </div>
+      <div class="track-modal-actions">
+        <button class="btn-action" id="track-maps-btn" onclick="openTrackInMaps()">🗺 Open Route in Google Maps</button>
+        <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);align-self:center" id="track-count-label"></span>
+      </div>
+      <div class="track-modal-body" id="track-modal-body">
+        <div class="loading"><span class="spinner"></span>Loading track…</div>
       </div>
     </div>
   </div>
@@ -1364,6 +1451,9 @@
 
   // MARK: - Device Track (load track file and open Google Maps)
 
+  // Current track data for modal — used by openTrackInMaps()
+  window._currentTrackPoints = [];
+
   async function viewTrack(deviceName, trackPath) {
     const btn = event.target;
     const origText = btn.textContent;
@@ -1373,37 +1463,40 @@
     try {
       const track = await ghGet(trackPath);
       if (!track || !Array.isArray(track) || track.length === 0) {
-        alert('No track history found for ' + deviceName + '.\nThe device needs to flush at least one batch to GitHub.');
+        alert('No track history found for ' + deviceName.replace(/\\'/g, "'") + '.\nThe device needs to flush at least one batch to GitHub.');
         return;
       }
 
-      // Build Google Maps URL with waypoints
-      // Maps supports up to ~20 waypoints in URL — use evenly sampled subset
-      const MAX_WAYPOINTS = 20;
-      let points = track.filter(e => e.location && e.location.includes(','));
+      const points = track.filter(e => e.location && e.location.includes(','));
       if (points.length === 0) { alert('No valid coordinates in track.'); return; }
 
-      // Sample evenly if too many points
-      let sampled = points;
-      if (points.length > MAX_WAYPOINTS) {
-        const step = Math.floor(points.length / MAX_WAYPOINTS);
-        sampled = points.filter((_, i) => i % step === 0).slice(0, MAX_WAYPOINTS);
-        // Always include the last point
-        if (sampled[sampled.length - 1] !== points[points.length - 1]) {
-          sampled.push(points[points.length - 1]);
-        }
-      }
+      // Store for Maps button
+      window._currentTrackPoints = points;
 
-      const coords = sampled.map(e => e.location);
-      const origin      = coords[0];
-      const destination = coords[coords.length - 1];
-      const waypoints   = coords.slice(1, -1).join('|');
+      // Render modal
+      document.getElementById('track-modal-title').textContent = '📍 ' + deviceName.replace(/\\'/g, "'") + ' — Location Track';
+      document.getElementById('track-count-label').textContent = points.length + ' point' + (points.length === 1 ? '' : 's');
 
-      let mapsURL = `https://www.google.com/maps/dir/${origin}/${destination}`;
-      if (waypoints) mapsURL += `?waypoints=${encodeURIComponent(waypoints)}`;
+      const body = document.getElementById('track-modal-body');
+      body.innerHTML = points.slice().reverse().map((e, i) => {
+        const isFirst = i === points.length - 1;  // oldest (reversed)
+        const isLast  = i === 0;                   // newest (reversed)
+        const dotClass = isLast ? 'last' : isFirst ? 'first' : '';
+        const [lat, lon] = e.location.split(',').map(s => parseFloat(s.trim()));
+        const mapsLink = `https://www.google.com/maps?q=${lat},${lon}`;
+        const dt = new Date(e.timestamp);
+        const timeStr = isNaN(dt) ? e.timestamp : dt.toLocaleString();
+        return `<div class="track-entry">
+          <div class="track-entry-dot ${dotClass}"></div>
+          <div class="track-entry-info">
+            <div class="track-entry-time">${timeStr}</div>
+            <div class="track-entry-coords">${lat.toFixed(4)}, ${lon.toFixed(4)}</div>
+          </div>
+          <a href="${mapsLink}" target="_blank" class="track-entry-link">📍 View</a>
+        </div>`;
+      }).join('');
 
-      console.log(`[TRACK] ${deviceName}: ${points.length} points, showing ${sampled.length} on map`);
-      window.open(mapsURL, '_blank');
+      document.getElementById('track-modal-backdrop').style.display = 'flex';
 
     } catch(e) {
       alert('Failed to load track: ' + e.message);
@@ -1411,6 +1504,32 @@
       btn.textContent = origText;
       btn.disabled = false;
     }
+  }
+
+  function closeTrackModal() {
+    document.getElementById('track-modal-backdrop').style.display = 'none';
+    window._currentTrackPoints = [];
+  }
+
+  function openTrackInMaps() {
+    const points = window._currentTrackPoints;
+    if (!points || points.length === 0) return;
+    const MAX_WAYPOINTS = 20;
+    let sampled = points;
+    if (points.length > MAX_WAYPOINTS) {
+      const step = Math.floor(points.length / MAX_WAYPOINTS);
+      sampled = points.filter((_, i) => i % step === 0).slice(0, MAX_WAYPOINTS);
+      if (sampled[sampled.length - 1] !== points[points.length - 1]) {
+        sampled.push(points[points.length - 1]);
+      }
+    }
+    const coords = sampled.map(e => e.location);
+    const origin      = coords[0];
+    const destination = coords[coords.length - 1];
+    const waypoints   = coords.slice(1, -1).join('|');
+    let mapsURL = `https://www.google.com/maps/dir/${origin}/${destination}`;
+    if (waypoints) mapsURL += `?waypoints=${encodeURIComponent(waypoints)}`;
+    window.open(mapsURL, '_blank');
   }
 
   // MARK: - Device Block / Unblock (portal writes directly to status.json)
