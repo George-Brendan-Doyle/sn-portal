@@ -458,6 +458,32 @@
   }
   .archive-chevron.open { transform: rotate(180deg); }
   .archive-panel { display: none; margin-bottom: 32px; }
+
+  /* Device action buttons */
+  .device-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+    align-items: center;
+  }
+  .btn-device {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border2);
+    background: var(--surface2);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  .btn-device:hover { color: var(--text); border-color: var(--accent); }
+  .btn-device.danger { border-color: rgba(239,68,68,0.4); color: var(--red); }
+  .btn-device.danger:hover { background: rgba(239,68,68,0.1); border-color: var(--red); }
+  .btn-device.success { border-color: rgba(34,197,94,0.4); color: var(--green); }
+  .btn-device.success:hover { background: rgba(34,197,94,0.1); border-color: var(--green); }
   .archive-panel.open { display: block; }
   .archive-toolbar {
     display: flex;
@@ -952,6 +978,18 @@
                          : isBehind ? '<span class="badge badge-behind">⬆ Behind</span>'
                          : '';
         const safeName  = b.device.replace(/'/g, "\\'");
+        const locationHTML = b.location ? (() => {
+          const parts = b.location.split(',');
+          if (parts.length === 2) {
+            const lat = parseFloat(parts[0]), lon = parseFloat(parts[1]);
+            const mapsURL = `https://www.google.com/maps?q=${lat},${lon}`;
+            return `<a href="${mapsURL}" target="_blank" class="btn-device" style="text-decoration:none" title="Open last known location in Google Maps">📍 ${lat.toFixed(3)}, ${lon.toFixed(3)}</a>`;
+          }
+          return '';
+        })() : '';
+        const blockBtn = isBlocked
+          ? `<button class="btn-device success" onclick="event.stopPropagation();toggleDeviceBlock('${safeName}', false)" title="Unblock this device">✓ Unblock</button>`
+          : `<button class="btn-device danger"  onclick="event.stopPropagation();toggleDeviceBlock('${safeName}', true)"  title="Block this device from the network">⊘ Block</button>`;
         return `
           <div class="device-card ${isBlocked ? 'blocked' : ''}" style="cursor:pointer" onclick="setDeviceFilter('${safeName}')" title="Click to filter messages for ${b.device}">
             <div class="status-dot ${dotCls}"></div>
@@ -966,6 +1004,10 @@
               ${isBlocked ? '<span class="badge badge-blocked">Blocked</span>' : ''}
               ${b.requestPackage ? '<span class="badge badge-pkg">Wants package</span>' : ''}
               ${pendingHTML}
+            </div>
+            <div class="device-actions">
+              ${locationHTML}
+              ${blockBtn}
             </div>
           </div>`;
       }).join('');
@@ -1305,6 +1347,33 @@
     });
     if (!confirm('Archive ' + toArchive.length + ' message(s)?')) return;
     await archiveMessages(toArchive, true);
+  }
+
+  // MARK: - Device Block / Unblock (portal writes directly to status.json)
+
+  async function toggleDeviceBlock(deviceName, shouldBlock) {
+    const action = shouldBlock ? 'block' : 'unblock';
+    if (!confirm((shouldBlock ? 'Block' : 'Unblock') + ' device "' + deviceName + '"?\n\n' +
+      (shouldBlock ? 'The device will be locked out on its next app launch.' : 'The device will be re-admitted on its next app launch.'))) return;
+
+    const status = await ghGet('status.json');
+    if (!status) { alert('Could not load status.json — try again.'); return; }
+
+    let blocked = status.blockedDevices || [];
+    if (shouldBlock) {
+      if (!blocked.includes(deviceName)) blocked.push(deviceName);
+    } else {
+      blocked = blocked.filter(d => d !== deviceName);
+    }
+
+    const updated = { ...status, blockedDevices: blocked };
+    const ok = await ghPut('status.json', updated, 'portal: ' + action + ' ' + deviceName);
+    if (ok) {
+      console.log('[PORTAL] ' + action + ' ' + deviceName + ' OK');
+      await loadDashboard();
+    } else {
+      alert('Failed to update status.json. Check token permissions.');
+    }
   }
 
   function logout() {
