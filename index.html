@@ -987,6 +987,8 @@
           }
           return '';
         })() : '';
+        const trackPath = `heartbeat/${b.device.replace(/ /g,'_').replace(/'/g,'').replace(/’/g,'')}_track.json`;
+        const trackBtn = `<button class="btn-device" onclick="event.stopPropagation();viewTrack('${safeName}', '${trackPath}')" title="View location history on Google Maps">🗺 Track</button>`;
         const blockBtn = isBlocked
           ? `<button class="btn-device success" onclick="event.stopPropagation();toggleDeviceBlock('${safeName}', false)" title="Unblock this device">✓ Unblock</button>`
           : `<button class="btn-device danger"  onclick="event.stopPropagation();toggleDeviceBlock('${safeName}', true)"  title="Block this device from the network">⊘ Block</button>`;
@@ -1007,6 +1009,7 @@
             </div>
             <div class="device-actions">
               ${locationHTML}
+              ${trackBtn}
               ${blockBtn}
             </div>
           </div>`;
@@ -1347,6 +1350,57 @@
     });
     if (!confirm('Archive ' + toArchive.length + ' message(s)?')) return;
     await archiveMessages(toArchive, true);
+  }
+
+  // MARK: - Device Track (load track file and open Google Maps)
+
+  async function viewTrack(deviceName, trackPath) {
+    const btn = event.target;
+    const origText = btn.textContent;
+    btn.textContent = '⌛ Loading…';
+    btn.disabled = true;
+
+    try {
+      const track = await ghGet(trackPath);
+      if (!track || !Array.isArray(track) || track.length === 0) {
+        alert('No track history found for ' + deviceName + '.\nThe device needs to flush at least one batch to GitHub.');
+        return;
+      }
+
+      // Build Google Maps URL with waypoints
+      // Maps supports up to ~20 waypoints in URL — use evenly sampled subset
+      const MAX_WAYPOINTS = 20;
+      let points = track.filter(e => e.location && e.location.includes(','));
+      if (points.length === 0) { alert('No valid coordinates in track.'); return; }
+
+      // Sample evenly if too many points
+      let sampled = points;
+      if (points.length > MAX_WAYPOINTS) {
+        const step = Math.floor(points.length / MAX_WAYPOINTS);
+        sampled = points.filter((_, i) => i % step === 0).slice(0, MAX_WAYPOINTS);
+        // Always include the last point
+        if (sampled[sampled.length - 1] !== points[points.length - 1]) {
+          sampled.push(points[points.length - 1]);
+        }
+      }
+
+      const coords = sampled.map(e => e.location);
+      const origin      = coords[0];
+      const destination = coords[coords.length - 1];
+      const waypoints   = coords.slice(1, -1).join('|');
+
+      let mapsURL = `https://www.google.com/maps/dir/${origin}/${destination}`;
+      if (waypoints) mapsURL += `?waypoints=${encodeURIComponent(waypoints)}`;
+
+      console.log(`[TRACK] ${deviceName}: ${points.length} points, showing ${sampled.length} on map`);
+      window.open(mapsURL, '_blank');
+
+    } catch(e) {
+      alert('Failed to load track: ' + e.message);
+    } finally {
+      btn.textContent = origText;
+      btn.disabled = false;
+    }
   }
 
   // MARK: - Device Block / Unblock (portal writes directly to status.json)
