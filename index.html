@@ -890,11 +890,12 @@
       bannerText.innerHTML = `Authoritative device: <strong>${status.authoritativeDevice}</strong> &nbsp;·&nbsp; Last push: <strong>${timeAgo(status.timestamp)}</strong>${status.packageAvailable ? ' &nbsp;·&nbsp; <span style="color:var(--amber)">Package available</span>' : ''}`;
     }
 
-    // Load heartbeats
+    // Load heartbeats — skip _track.json files
     const hbFiles = await ghList('heartbeat');
     const beats = [];
     for (const f of hbFiles) {
       if (!f.name.endsWith('.json')) continue;
+      if (f.name.includes('_track')) continue;  // skip location track files
       try {
         const beat = await ghGet(`heartbeat/${f.name}`);
         if (beat) beats.push(beat);
@@ -1014,53 +1015,8 @@
             </div>
           </div>`;
       }).join('');
-    }
 
-    // Load recent messages
-    const msgFiles = await ghList('messages');
-    const msgs = [];
-    for (const f of msgFiles) {
-      if (!f.name.endsWith('.json')) continue;
-      try {
-        const msg = await ghGet(`messages/${f.name}`);
-        if (msg) msgs.push({ ...msg, _sourceFile: f.name });
-      } catch(e) {}
-    }
-
-    const msgGrid = document.getElementById('messages-grid');
-    if (msgs.length === 0) {
-      msgGrid.innerHTML = '<div class="loading">No messages found</div>';
-    } else {
-      msgs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
-      // Attempt to decrypt messages using the portal password
-      // iOS encrypts using the SHA-256 hash of the password (retrieveHash()), not the plain text.
-      // PASS_HASH is that hash — must match what CryptoHelper used as the HKDF input key.
-      window._allDecryptedMsgs = await Promise.all(msgs.map(async m => {
-        const decSubject = await decryptPayload(m.subject, PASS_HASH);
-        const decBody    = await decryptPayload(m.body,    PASS_HASH);
-        return {
-          ...m,
-          _rawSubject: m.subject,  // preserve original (possibly encrypted) for archiving
-          _rawBody:    m.body,
-          subject:     decSubject || m.subject,
-          body:        decBody    || m.body,
-          encrypted:   decSubject !== null && decSubject !== m.subject
-        };
-      }));
-      // Auto-archive read messages older than ARCHIVE_DAYS
-      const cutoff = Date.now() - ARCHIVE_DAYS * 86400000;
-      const toArchive = msgs.filter(m => m.read && new Date(m.timestamp).getTime() < cutoff);
-      if (toArchive.length > 0) {
-        console.log('[ARCHIVE] Auto-archiving ' + toArchive.length + ' old read message(s)');
-        await archiveMessages(toArchive, false); // silent — no UI refresh
-        // Remove auto-archived messages from the live decrypted list
-        const archivedIds = new Set(toArchive.map(m => m.id));
-        window._allDecryptedMsgs = window._allDecryptedMsgs.filter(m => !archivedIds.has(m.id));
-      }
-
-      renderMessages();
-
-      // Populate device filter pills
+      // Populate device filter pills from heartbeat devices
       const dbar = document.getElementById('device-filter-bar');
       if (dbar) {
         const deviceNames = allDevices.filter(b => b.timestamp).map(b => b.device);
@@ -1075,6 +1031,60 @@
         dbar.innerHTML = pillsHTML;
       }
     }
+
+    // Messages load lazily — show prompt until a device is selected or All is clicked
+    const msgGrid = document.getElementById('messages-grid');
+    if (!window._allDecryptedMsgs) {
+      msgGrid.innerHTML = '<div class="loading">Select a device above to load messages, or click All Devices</div>';
+    }
+    // Kick off background message load so it\'s ready when needed
+    loadAllMessages();
+  }
+
+  // Load all messages in background — called after devices render
+  async function loadAllMessages() {
+    const msgFiles = await ghList('messages');
+    const msgs = [];
+    for (const f of msgFiles) {
+      if (!f.name.endsWith('.json')) continue;
+      try {
+        const msg = await ghGet(`messages/${f.name}`);
+        if (msg) msgs.push({ ...msg, _sourceFile: f.name });
+      } catch(e) {}
+    }
+
+    const msgGrid = document.getElementById('messages-grid');
+    if (msgs.length === 0) {
+      msgGrid.innerHTML = '<div class="loading">No messages found</div>';
+      window._allDecryptedMsgs = [];
+      return;
+    }
+
+    msgs.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+    window._allDecryptedMsgs = await Promise.all(msgs.map(async m => {
+      const decSubject = await decryptPayload(m.subject, PASS_HASH);
+      const decBody    = await decryptPayload(m.body,    PASS_HASH);
+      return {
+        ...m,
+        _rawSubject: m.subject,
+        _rawBody:    m.body,
+        subject:     decSubject || m.subject,
+        body:        decBody    || m.body,
+        encrypted:   decSubject !== null && decSubject !== m.subject
+      };
+    }));
+
+    // Auto-archive read messages older than ARCHIVE_DAYS
+    const cutoff = Date.now() - ARCHIVE_DAYS * 86400000;
+    const toArchive = msgs.filter(m => m.read && new Date(m.timestamp).getTime() < cutoff);
+    if (toArchive.length > 0) {
+      console.log('[ARCHIVE] Auto-archiving ' + toArchive.length + ' old read message(s)');
+      await archiveMessages(toArchive, false);
+      const archivedIds = new Set(toArchive.map(m => m.id));
+      window._allDecryptedMsgs = window._allDecryptedMsgs.filter(m => !archivedIds.has(m.id));
+    }
+
+    renderMessages();
   }
 
   // MARK: - Message filter
