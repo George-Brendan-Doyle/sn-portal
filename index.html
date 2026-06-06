@@ -963,7 +963,7 @@
         parseBuildTime(bn) > parseBuildTime(best) ? bn : best, buildNumbers[0] || '');
       const multipleBuilds = new Set(buildNumbers).size > 1;
 
-      grid.innerHTML = allDevices.map(b => {
+      grid.innerHTML = allDevices.filter(b => b.device).map(b => {
         const online    = isOnline(b.timestamp);
         const isBlocked = blocked.includes(b.device);
         const neverSeen = !b.timestamp;
